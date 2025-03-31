@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Call Tracker</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 20px;
+      background-color: #f5f7fa;
+      color: #333;
+    }
+    h2 {
+      text-align: center;
+      color: #2c3e50;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-bottom: 30px;
+      background-color: #ffffff;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    th {
+      background-color: #3498db;
+      color: white;
+      padding: 10px;
+    }
+    td {
+      padding: 10px;
+      text-align: center;
+      border-bottom: 1px solid #ecf0f1;
+    }
+    input, select {
+      padding: 8px;
+      width: 90%;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      padding: 12px 20px;
+      background-color: #2ecc71;
+      border: none;
+      border-radius: 5px;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+      display: block;
+      margin: 0 auto;
+    }
+    button:hover {
+      background-color: #27ae60;
+    }
+    label, select {
+      font-weight: bold;
+      margin-right: 10px;
+    }
+    .settings {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Call Minutes Tracker</h2>
+  <div class="settings">
+    <label for="coinRate">Coins per Minute: </label>
+    <select id="coinRate">
+      <option value="80">80</option>
+      <option value="100">100</option>
+      <option value="120">120</option>
+    </select>
+  </div>
+  <div id="weeksContainer"></div>
+  <button onclick="addWeek()">Add New Week</button>
+
+  <script>
+    const coinRateSelector = document.getElementById('coinRate');
+    const weeksContainer = document.getElementById('weeksContainer');
+
+    let data = JSON.parse(localStorage.getItem('callData')) || [];
+    let coinRate = parseInt(coinRateSelector.value);
+
+    const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+    coinRateSelector.addEventListener('change', () => {
+      coinRate = parseInt(coinRateSelector.value);
+      updateAllCoins();
+      saveData();
+    });
+
+    function createWeek(index) {
+      const table = document.createElement('table');
+      table.dataset.weekIndex = index;
+      table.innerHTML = `<thead><tr><th>Day</th><th>Caller ID</th><th>Minutes Called</th><th>Total Coins</th></tr></thead><tbody></tbody>`;
+      const tbody = table.querySelector('tbody');
+
+      let weeklyTotalCoins = 0;
+
+      for (let i = 0; i < 7; i++) {
+        const row = document.createElement('tr');
+        const day = daysOfWeek[i];
+        const call = data[index]?.[i]?.call || '';
+        const minutes = data[index]?.[i]?.minutes || 0;
+        const coins = minutes * coinRate;
+        weeklyTotalCoins += coins;
+
+        row.innerHTML = `
+          <td>${day}</td>
+          <td><input type="text" value="${call}" oninput="updateCall(${index}, ${i}, this.value)"></td>
+          <td><input type="number" value="${minutes}" min="0" oninput="updateMinutes(${index}, ${i}, this.value)"></td>
+          <td class="coin-cell">${coins}</td>
+        `;
+        tbody.appendChild(row);
+      }
+
+      const moneyRow = document.createElement('tr');
+      moneyRow.innerHTML = `
+        <td colspan="3"><strong>Money Earned ($)</strong></td>
+        <td class="money-cell">${(weeklyTotalCoins / 750).toFixed(2)}</td>
+      `;
+      tbody.appendChild(moneyRow);
+
+      weeksContainer.appendChild(table);
+    }
+
+    function updateCall(week, day, value) {
+      data[week] = data[week] || [];
+      data[week][day] = data[week][day] || {};
+      data[week][day].call = value;
+      saveData();
+    }
+
+    function updateMinutes(week, day, value) {
+      data[week] = data[week] || [];
+      data[week][day] = data[week][day] || {};
+      data[week][day].minutes = parseInt(value) || 0;
+      updateWeek(week);
+      saveData();
+    }
+
+    function updateWeek(week) {
+      const table = document.querySelectorAll('table')[week];
+      const rows = table.querySelectorAll('tbody tr');
+      let weeklyTotalCoins = 0;
+
+      for (let d = 0; d < 7; d++) {
+        const coins = (data[week][d]?.minutes || 0) * coinRate;
+        weeklyTotalCoins += coins;
+        rows[d].querySelector('.coin-cell').textContent = coins;
+      }
+
+      const moneyCell = rows[7].querySelector('.money-cell');
+      moneyCell.textContent = (weeklyTotalCoins / 750).toFixed(2);
+    }
+
+    function updateAllCoins() {
+      for (let w = 0; w < data.length; w++) {
+        updateWeek(w);
+      }
+    }
+
+    function saveData() {
+      localStorage.setItem('callData', JSON.stringify(data));
+    }
+
+    function addWeek() {
+      const index = data.length;
+      data.push([]);
+      createWeek(index);
+      saveData();
+    }
+
+    function loadWeeks() {
+      for (let i = 0; i < data.length; i++) {
+        createWeek(i);
+      }
+    }
+
+    loadWeeks();
+    if (data.length === 0) addWeek();
+  </script>
+</body>
+</html>
